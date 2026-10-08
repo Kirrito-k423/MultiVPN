@@ -11,12 +11,16 @@ static ATTEMPTS: AtomicU64 = AtomicU64::new(0);
 // IDs are unique across sessions in one controller process. They are ephemeral
 // and must not be restored after a controller restart without revalidation.
 fn allocate_attempt(counter: &AtomicU64) -> Result<u64, Error> {
-    counter
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-            value.checked_add(1)
-        })
-        .map(|previous| previous + 1)
-        .map_err(|_| Error::AttemptCounterExhausted)
+    let mut previous = counter.load(Ordering::Relaxed);
+    loop {
+        let next = previous
+            .checked_add(1)
+            .ok_or(Error::AttemptCounterExhausted)?;
+        match counter.compare_exchange_weak(previous, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return Ok(next),
+            Err(current) => previous = current,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,6 +271,30 @@ mod tests {
             Err(Error::StaleAttempt)
         );
         assert!(!b.may_forward());
+    }
+
+    #[test]
+    fn parallel_attempt_allocation_never_duplicates_an_id() {
+        let counter = AtomicU64::new(0);
+        let barrier = std::sync::Barrier::new(4);
+        let mut ids = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        (0..256)
+                            .map(|_| allocate_attempt(&counter).unwrap())
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        ids.sort_unstable();
+        assert_eq!(ids, (1..=1024).collect::<Vec<_>>());
     }
 
     #[test]

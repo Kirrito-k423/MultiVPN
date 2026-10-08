@@ -22,7 +22,7 @@ python3 scripts/check_docs.py
 
 Windows 使用 `python`。CI 在 Windows x64、Mac ARM 和 Mac Intel 上执行这些核心检查；它不具有用户的网关和凭据，也不负责原厂拨号或真实内网测试。
 
-当前 Rust edition 为 2024，核心最低 Rust 版本声明为 1.85。CI 使用 stable；最低版本构建尚未单独验证。引入 GPUI 时须按其依赖图提高工具链要求并更新 lockfile。项目源码采用 MIT，第三方依赖和原厂客户端保持各自许可。
+当前 Rust edition 为 2024，开发与 CI 工具链固定为 `rust-toolchain.toml` 中的 1.97.0。核心最低 Rust 版本声明为 1.85，但最低版本构建尚未单独验证。引入 GPUI 或升级工具链时须更新依赖、lockfile 与三个平台的 CI 证据。项目源码采用 MIT，第三方依赖和原厂客户端保持各自许可。
 
 ## 可公开的证据
 
