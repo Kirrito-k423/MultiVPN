@@ -41,4 +41,4 @@ Mac ARM 优先验证 macOS guest；Mac Intel 验证独立 guest + SSH 接入路�
 
 Mac 评估 Network Extension，Windows 评估 WFP。通过独立设计和验证后再增加透明 TCP/UDP、DNS 或包级能力。Linux namespace/container、原厂 SDK、多会话原生隧道和镜像优化均由新的证据驱动，不视为首版前提。
 
-正式任务与进度见 [Issues](https://github.com/Kirrito-k423/MultiVPN/issues)。
+正式任务：[#1 Mac 兼容性](https://github.com/Kirrito-k423/MultiVPN/issues/1)、[#2 Windows 兼容性](https://github.com/Kirrito-k423/MultiVPN/issues/2)、[#3 共用访问层](https://github.com/Kirrito-k423/MultiVPN/issues/3)、[#4 桌面界面](https://github.com/Kirrito-k423/MultiVPN/issues/4)、[#5 发布验收](https://github.com/Kirrito-k423/MultiVPN/issues/5)。
