@@ -2,7 +2,7 @@
 
 面向 **Windows 与 macOS** 的多 VPN 桌面管理应用，计划复用原厂 UniVPN 客户端，在独立环境中运行多条连接，提供各自的 SSH、IDE 与浏览器访问入口。
 
-**当前阶段：公开设计与连接生命周期基础。** 已实现的 Rust 核心只管理连接状态与转发许可，不启动虚拟机、不拨号、不提供网络代理。桌面界面、平台后端与真实双 VPN 连接仍待实现和验证。
+**当前阶段：连接生命周期基础与隔离环境诊断 PoC。** Rust 核心只管理连接状态与转发许可；新增 [Linux 容器 PoC](poc/linux/README.md)用于验证原厂 CLI、独立后台和受限 SSH 接入。桌面界面、生产级平台后端与真实双 VPN 连接仍待实现和验证。
 
 本项目独立开发，与 UniVPN 原厂没有从属关系。仓库仅包含本项目代码与文档，原厂客户端由用户从授权渠道自行安装。
 
@@ -23,6 +23,7 @@ CI 结果见 [Actions](https://github.com/Kirrito-k423/MultiVPN/actions)。编�
 - [公开开发流程](CONTRIBUTING.md)
 - [兼容性证据模板](docs/validation/compatibility-template.md)
 - [当前验证记录](docs/validation/bootstrap.md)
+- [Linux 隔离诊断与验证](poc/linux/README.md)
 - [开发任务](https://github.com/Kirrito-k423/MultiVPN/issues)
 
 ```sh
