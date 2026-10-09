@@ -2,7 +2,7 @@ ARG BASE_IMAGE=public.ecr.aws/ubuntu/ubuntu:26.04@sha256:51e35c02a42cf2a6646c587
 FROM ${BASE_IMAGE}
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    ca-certificates iproute2 iptables openssh-server procps python3 tini \
+    ca-certificates iproute2 iptables openssh-server procps python3 tini tmux \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /usr/share/fonts /run/sshd \
     && useradd --create-home --shell /bin/sh vpn \

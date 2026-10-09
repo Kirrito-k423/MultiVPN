@@ -47,7 +47,9 @@ python poc/linux/poc.py export --name multivpn-poc-b --directory local/ssh-b
 python poc/linux/poc.py login --name multivpn-poc-a --directory local/ssh-a
 ```
 
-此命令固定管理主机身份后，通过真实 SSH 登录会话打开原厂 CLI；直接 `docker exec` 会话在本次原厂版本中保存配置失败。按原厂菜单配置连接、输入现有用户名/密码；工具不把密码放入命令参数、环境变量或镜像，不自动确认证书告警。Linux CLI 的认证兼容性需逐个网关验证，不承诺原厂图形界面的全部 MFA/扫码能力。
+此命令固定管理主机身份后，通过真实 SSH 登录会话打开原厂 CLI；直接 `docker exec` 会话在本次原厂版本中保存配置失败。CLI 在 guest 内的 `multivpn-univpn` tmux 会话中运行，管理 SSH 断开时终端继续存在，VPN 不随管理窗口关闭而退出。再次执行 `login` 会接入同一会话；按 `Ctrl-b` 后按 `d` 可退出管理窗口。需要断开 VPN 时在原厂菜单选择 `q`，或停止本工具创建的容器。容器停止或重启不会自动重新认证。
+
+按原厂菜单配置连接、输入现有用户名/密码；工具不把密码放入命令参数、环境变量或镜像，不自动确认证书告警。Linux CLI 的认证兼容性需逐个网关验证，不承诺原厂图形界面的全部 MFA/扫码能力。tmux 会话位于 guest 内；含认证状态的容器仍作为本机敏感资产管理，不发布镜像或终端记录。
 
 登录后另开终端检查并允许目标：
 

@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -158,9 +159,15 @@ def main():
         if options.command == 'login':
             export(options)
             config = options.directory.resolve() / (options.name + '.conf')
-            # A real login session supplies the user identity expected by the original client.
+            # Keep the original terminal alive when the management SSH client disconnects.
+            # The named tmux session is confined to this guest and the vpn user.
+            environment = os.environ.copy()
+            if environment.get('TERM', 'dumb') == 'dumb':
+                environment['TERM'] = 'xterm-256color'
             subprocess.run(['ssh', '-tt', '-F', str(config), options.name + '-guest',
-                            'cd /usr/local/UniVPN/serviceclient && exec ./UniVPNCS'], check=True)
+                            "exec tmux new-session -A -s multivpn-univpn "
+                            "'cd /usr/local/UniVPN/serviceclient && exec ./UniVPNCS'"],
+                           check=True, env=environment)
         elif options.command == 'stop':
             docker('stop', options.name)
         else:
