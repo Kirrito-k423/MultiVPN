@@ -70,6 +70,21 @@ python poc/linux/poc.py stop --name multivpn-poc-a
 
 管理操作同时验证名称和所有权标签，拒绝操作其他 Docker 工作负载；`stop` 保留容器、配置和主机密钥卷，可由用户恢复或检查。清理只针对本次创建的容器和卷，禁止全局 prune。
 
+## 接入不读取 SSH 配置的应用
+
+上面的 `ssh -F` 使用 guest 跳板。应用如果只支持主机和端口，直接填内网 IP 仍会走宿主网络，不能因此认定 guest VPN 不通。认证及 `allow` 检查通过后，可为一个已声明的目标建立本地 TCP 入口。以下是 Mac 上的手动诊断示例；先确认本地端口未占用，将示例目标替换为已授权目标：
+
+```sh
+ssh -F local/ssh-a/multivpn-poc-a.conf -N \
+  -o BatchMode=yes -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+  -L 127.0.0.1:22301:192.0.2.10:22 multivpn-poc-a-guest
+```
+
+应用的 SSH 主机填写 `127.0.0.1`、端口填写 `22301`，认证仍使用目标服务器的账号和密钥。为不同目标分配不同的本地端口；不绑定其他网卡，不扩大 guest 的目标策略。应用的主机指纹存储可能独立于 OpenSSH，必须把本地入口收到的指纹与可信目标记录核对后再批准。
+
+该命令需要保持运行，`Ctrl-C` 只关闭这条转发；guest 中的 tmux 登录会话继续存在。入口不是系统路由，不能让所有应用直接访问内网 IP。当前没有自动启动、重启恢复或桌面入口管理；Windows 真实接入仍需单独验证。经 SSH 读取远端回环 Agent 的监控应用，只需这条 SSH 入口，无需额外开放 Agent 的入站端口。
+
 ## 验收记录
 
 参见[本机 PoC 验证记录](../../docs/validation/linux-isolation-poc.md)。控制测试命令：
