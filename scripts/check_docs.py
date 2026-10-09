@@ -7,7 +7,7 @@ import subprocess
 
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
-    files = [root / "README.md", root / "CONTRIBUTING.md", *root.glob("docs/**/*.md")]
+    files = [root / "README.md", root / "CONTRIBUTING.md", *root.glob("docs/**/*.md"), *root.glob("poc/**/*.md")]
     for path in files:
         text = path.read_text(encoding="utf-8")
         if text.count("```") % 2:

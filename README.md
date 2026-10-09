@@ -2,7 +2,7 @@
 
 面向 **Windows 与 macOS** 的多 VPN 桌面管理应用，计划复用原厂 UniVPN 客户端，在独立环境中运行多条连接，提供各自的 SSH、IDE 与浏览器访问入口。
 
-**当前阶段：公开设计与连接生命周期基础。** 已实现的 Rust 核心只管理连接状态与转发许可，不启动虚拟机、不拨号、不提供网络代理。桌面界面、平台后端与真实双 VPN 连接仍待实现和验证。
+**当前阶段：连接生命周期基础与隔离环境诊断 PoC。** Rust 核心只管理连接状态与转发许可；[Linux 容器 PoC](poc/linux/README.md)用于验证原厂 CLI、独立后台和受限 SSH 接入。已在 Mac ARM 上实测宿主原生 VPN 与一个 Linux guest VPN 同时访问已知 SSH 目标，并验证断开 guest 后宿主连接仍可用。桌面界面、生产级平台后端、其他平台真实运行和完整网络能力仍待实现与验证；详见[实测范围](docs/validation/linux-isolation-poc.md)。
 
 本项目独立开发，与 UniVPN 原厂没有从属关系。仓库仅包含本项目代码与文档，原厂客户端由用户从授权渠道自行安装。
 
@@ -11,7 +11,7 @@
 | 平台 | 目标架构 | 运行环境方案 | 当前证据 |
 |---|---|---|---|
 | Windows 11 | x86_64 | 独立 Hyper-V guest 或通过 SSH 接入外部独立 guest | 核心代码由 Windows CI 构建/测试；真实 VPN 待验证 |
-| macOS 15+ | Apple silicon | 独立 guest，拟用 Apple Virtualization 管理 | 核心代码由 ARM Mac CI 构建/测试；真实 VPN 待验证 |
+| macOS 15+ | Apple silicon | 独立 guest，拟用 Apple Virtualization 管理 | 核心 CI；宿主原生 VPN + Linux 容器 VPN 并行 SSH 已实测，自动虚拟机后端待实现 |
 | macOS 15+ | Intel | 通过 SSH 接入独立 guest，自动虚拟机后端待选型 | 核心代码由 Intel Mac CI 构建/测试；真实 VPN 待验证 |
 
 CI 结果见 [Actions](https://github.com/Kirrito-k423/MultiVPN/actions)。编译成功只代表本阶段核心可构建，不能代表桌面应用、虚拟机、认证或多 VPN 可用。Windows Home 的虚拟机自动管理后端、Windows ARM 与较旧系统另行评估；通过 SSH 接入的路径也需要实际认证与网络验证。
@@ -23,6 +23,7 @@ CI 结果见 [Actions](https://github.com/Kirrito-k423/MultiVPN/actions)。编�
 - [公开开发流程](CONTRIBUTING.md)
 - [兼容性证据模板](docs/validation/compatibility-template.md)
 - [当前验证记录](docs/validation/bootstrap.md)
+- [Linux 隔离诊断与验证](poc/linux/README.md)
 - [开发任务](https://github.com/Kirrito-k423/MultiVPN/issues)
 
 ```sh

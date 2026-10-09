@@ -1,0 +1,179 @@
+"""Mac/Windows host helper for the Linux isolation diagnostic PoC."""
+import argparse
+import hashlib
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import tempfile
+
+HERE = Path(__file__).resolve().parent
+LABEL = 'io.multivpn.poc=linux-isolation'
+
+
+def docker(*args, **kwargs):
+    return subprocess.run(['docker', *map(str, args)], check=True, **kwargs)
+
+
+def owned(name):
+    if not re.fullmatch(r'multivpn-poc-[a-z0-9-]{1,30}', name):
+        raise ValueError('Names must start with multivpn-poc- and use lowercase letters/digits/hyphens')
+    result = docker('inspect', name, capture_output=True, text=True)
+    info = json.loads(result.stdout)[0]
+    if info['Config'].get('Labels', {}).get('io.multivpn.poc') != 'linux-isolation':
+        raise ValueError('Refusing to manage a container not created by this PoC')
+    return info
+
+
+def build(options):
+    installer = options.installer.resolve(strict=True)
+    digest = hashlib.sha256(installer.read_bytes()).hexdigest()
+    if digest != options.sha256.lower():
+        raise ValueError('Installer SHA256 mismatch; no build started')
+    # Only the original installer and this runtime enter the build context.
+    with tempfile.TemporaryDirectory(prefix='multivpn-build-') as directory:
+        context = Path(directory)
+        shutil.copyfile(installer, context / 'client.run')
+        shutil.copyfile(HERE / 'runtime.py', context / 'runtime.py')
+        args = ['build', '--file', HERE / 'Dockerfile', '--tag', options.image]
+        if options.base_image:
+            args += ['--build-arg', 'BASE_IMAGE=' + options.base_image]
+        if options.proxy:
+            args += ['--build-arg', 'HTTP_PROXY=' + options.proxy,
+                     '--build-arg', 'HTTPS_PROXY=' + options.proxy]
+        docker(*args, context)
+
+
+def start(options):
+    if not re.fullmatch(r'multivpn-poc-[a-z0-9-]{1,30}', options.name):
+        raise ValueError('Use a unique multivpn-poc- name')
+    if not 1024 <= options.port <= 65535:
+        raise ValueError('Choose an unprivileged loopback management port')
+    public_key = options.public_key.resolve(strict=True)
+    if public_key.read_text(encoding='utf-8').split()[0] not in ('ssh-ed25519', 'ssh-rsa', 'ecdsa-sha2-nistp256'):
+        raise ValueError('Expected public key file')
+    target_path = options.targets.resolve(strict=True)
+    if any(',' in str(path) for path in (public_key, target_path)):
+        raise ValueError('Docker bind-mount input paths must not contain commas')
+    rows = json.loads(target_path.read_text(encoding='utf-8'))
+    if not isinstance(rows, list) or not rows:
+        raise ValueError('Expected a nonempty target list')
+    for row in rows:
+        ipaddress.IPv4Address(row['host'])
+        if isinstance(row['port'], bool) or not isinstance(row['port'], int) or not 1 <= row['port'] <= 65535:
+            raise ValueError('Invalid TCP target port')
+    docker('run', '--detach', '--name', options.name, '--label', LABEL,
+           '--memory', '768m', '--cpus', '1', '--cap-add', 'NET_ADMIN',
+           '--device', '/dev/net/tun', '--publish', f'127.0.0.1:{options.port}:22',
+           '--mount', f'type=bind,source={public_key},target=/run/multivpn/mac.pub,readonly',
+           '--mount', f'type=bind,source={target_path},target=/run/multivpn/targets.json,readonly',
+           '--mount', f'type=volume,source={options.name}-ssh,target=/var/lib/multivpn/ssh',
+           options.image)
+
+
+def export(options):
+    info = owned(options.name)
+    bindings = info['NetworkSettings']['Ports'].get('22/tcp') or []
+    if len(bindings) != 1 or bindings[0]['HostIp'] != '127.0.0.1':
+        raise ValueError('Require exactly one loopback management binding')
+    target_result = docker('exec', options.name, 'cat', '/run/multivpn-effective-targets.json',
+                           capture_output=True, text=True)
+    rows = json.loads(target_result.stdout)
+    result = docker('exec', options.name, 'cat',
+                    '/var/lib/multivpn/ssh/ssh_host_ed25519_key.pub', capture_output=True, text=True)
+    key = result.stdout.split()
+    if len(key) < 2 or key[0] != 'ssh-ed25519':
+        raise ValueError('Unexpected guest host key')
+    directory = options.directory.resolve()
+    if any(char in str(directory) for char in ('\n', '\r', '"')):
+        raise ValueError('SSH config directory contains unsupported characters')
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    known = directory / (options.name + '-known-hosts')
+    guest = options.name + '-guest'
+    expected = guest + ' ' + ' '.join(key[:2]) + '\n'
+    if known.exists():
+        old = known.read_text(encoding='utf-8').splitlines()
+        if not old or old[0] != expected.strip():
+            raise ValueError('Guest host key changed; refusing to replace the pinned identity')
+    if not known.exists():
+        known.write_text(expected, encoding='utf-8')
+        known.chmod(0o600)
+    lines = ['# Generated by MultiVPN Linux diagnostic PoC', f'Host {guest}',
+             '    HostName 127.0.0.1', '    User vpn', f"    Port {bindings[0]['HostPort']}",
+             f'    HostKeyAlias {guest}', f'    UserKnownHostsFile "{known.as_posix()}"',
+             '    StrictHostKeyChecking yes', '    PasswordAuthentication no',
+             '    KbdInteractiveAuthentication no']
+    for index, row in enumerate(rows, 1):
+        host = str(ipaddress.IPv4Address(row['host']))
+        port = row['port']
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ValueError('Invalid target TCP port')
+        lines += ['', f'Host {options.name}-target-{index}', f'    HostName {host}',
+                  '    User root', f'    Port {port}', f'    ProxyJump {guest}',
+                  f'    HostKeyAlias {options.name}-{host}-{port}',
+                  f'    UserKnownHostsFile "{known.as_posix()}"',
+                  '    StrictHostKeyChecking ask']
+    output = directory / (options.name + '.conf')
+    if output.exists() and not output.read_text(encoding='utf-8').startswith('# Generated by MultiVPN Linux diagnostic PoC\n'):
+        raise ValueError('Refusing to overwrite an unrelated SSH config')
+    output.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    output.chmod(0o600)
+    print(output)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='command', required=True)
+    builder = commands.add_parser('build')
+    builder.add_argument('--installer', type=Path, required=True)
+    builder.add_argument('--sha256', required=True)
+    builder.add_argument('--image', default='multivpn-univpn-poc:local')
+    builder.add_argument('--base-image')
+    builder.add_argument('--proxy')
+    starter = commands.add_parser('start')
+    starter.add_argument('--name', required=True)
+    starter.add_argument('--port', type=int, required=True)
+    starter.add_argument('--public-key', type=Path, required=True)
+    starter.add_argument('--targets', type=Path, required=True)
+    starter.add_argument('--image', default='multivpn-univpn-poc:local')
+    for command in ('login', 'allow', 'deny', 'status', 'stop'):
+        item = commands.add_parser(command)
+        item.add_argument('--name', required=True)
+        if command == 'login':
+            item.add_argument('--directory', type=Path, required=True)
+    exporter = commands.add_parser('export')
+    exporter.add_argument('--name', required=True)
+    exporter.add_argument('--directory', type=Path, required=True)
+    options = parser.parse_args()
+    if options.command == 'build':
+        build(options)
+    elif options.command == 'start':
+        start(options)
+    elif options.command == 'export':
+        export(options)
+    else:
+        owned(options.name)
+        if options.command == 'login':
+            export(options)
+            config = options.directory.resolve() / (options.name + '.conf')
+            # Keep the original terminal alive when the management SSH client disconnects.
+            # The named tmux session is confined to this guest and the vpn user.
+            environment = os.environ.copy()
+            if environment.get('TERM', 'dumb') == 'dumb':
+                environment['TERM'] = 'xterm-256color'
+            subprocess.run(['ssh', '-tt', '-F', str(config), options.name + '-guest',
+                            "exec tmux new-session -A -s multivpn-univpn "
+                            "'cd /usr/local/UniVPN/serviceclient && exec ./UniVPNCS'"],
+                           check=True, env=environment)
+        elif options.command == 'stop':
+            docker('stop', options.name)
+        else:
+            docker('exec', options.name, 'python3', '/usr/local/lib/multivpn/runtime.py',
+                   options.command)
+
+
+if __name__ == '__main__':
+    main()
